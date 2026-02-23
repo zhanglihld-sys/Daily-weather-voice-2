@@ -29,7 +29,7 @@ text=f"""
 """
 
 resp=client.models.generate_content(
-model="gemini-3-pro-preview",
+model="gemini-3-flash-preview",
 contents=text)
 
 script=resp.text
