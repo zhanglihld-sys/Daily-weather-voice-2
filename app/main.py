@@ -19,7 +19,7 @@ url=f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services
 resp=requests.get(url,params={
     "key":VISUAL_KEY,
     "contentType":"json",
-    "unitGroup":"us",
+    "unitGroup":"metric",
     "include":"days,current",
     "lang":"zh"
 })
@@ -36,11 +36,12 @@ resolved=weather["resolvedAddress"]
 script=f"""
 这里是{resolved}天气播报。
 当前{current['conditions']}，
-气温{current['temp']}华氏度，
-体感{current['feelslike']}华氏度。
-今天最高{today['tempmax']}，
-最低{today['tempmin']}，
-降水概率{today['precipprob']}。
+气温{current['temp']}°C，
+体感{current['feelslike']}°C，
+湿度{current['humidity']}%。
+今天最高{today['tempmax']}°C，
+最低{today['tempmin']}°C，
+降水概率{today['precipprob']}%。
 """
 
 # ===== 生成语音 =====
