@@ -3,8 +3,11 @@ name: daily weather voice
 on:
   workflow_dispatch:
   schedule:
-    # 12:30 UTC ≈ 07:30 纽约（先跑通；后续你想精准我再给你最终cron）
-    - cron: "30 12 * * *"
+  # 7:00 AM New York (EST/EDT 自动换算)
+  - cron: "0 12 * * *"
+
+  # 4:00 PM New York
+  - cron: "0 21 * * *"
 
 jobs:
   run:
