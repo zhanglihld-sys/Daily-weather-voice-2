@@ -3,11 +3,13 @@ name: daily weather voice
 on:
   workflow_dispatch:
   schedule:
+    # 12:30 UTC ≈ 07:30 纽约（先跑通；后续你想精准我再给你最终cron）
     - cron: "30 12 * * *"
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -16,12 +18,33 @@ jobs:
         with:
           python-version: "3.11"
 
-      - run: pip install -r requirements.txt
+      - name: Install
+        run: |
+          set -euxo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -v
 
-      - run: python app/main.py
+      - name: Run
         env:
           VISUAL_CROSSING_API_KEY: ${{ secrets.VISUAL_CROSSING_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           LOCATION: ${{ secrets.LOCATION }}
+
+          TZ_NAME: "America/New_York"
+          UNIT_GROUP: "us"
+          VC_LANG: "zh"
+
+          # 你现在用的
+          GEMINI_MODEL: "gemini-3-flash-preview"
+        run: |
+          set -euxo pipefail
+          python app/main.py
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: out
+          path: out/
