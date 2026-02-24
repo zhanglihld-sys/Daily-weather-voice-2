@@ -2,34 +2,78 @@ import os
 import requests
 import subprocess
 
-TG_TOKEN = os.environ["TG_BOT_TOKEN"]
-TG_CHAT = os.environ["TG_CHAT_ID"]
+TG_TOKEN = os.environ["TG_BOT_TOKEN"].strip()
+TG_CHAT = str(os.environ["TG_CHAT_ID"]).strip()
 
-def get_updates():
+OFFSET_FILE = ".tg_offset.txt"
+
+
+def load_offset() -> int:
+    try:
+        with open(OFFSET_FILE, "r", encoding="utf-8") as f:
+            return int(f.read().strip() or "0")
+    except:
+        return 0
+
+
+def save_offset(offset: int):
+    with open(OFFSET_FILE, "w", encoding="utf-8") as f:
+        f.write(str(offset))
+
+
+def get_updates(offset: int):
     url = f"https://api.telegram.org/bot{TG_TOKEN}/getUpdates"
-    r = requests.get(url, timeout=30)
+    r = requests.get(url, params={"offset": offset, "timeout": 0}, timeout=30)
     r.raise_for_status()
-    return r.json()
+    data = r.json()
+    if not data.get("ok"):
+        return []
+    return data.get("result", [])
 
-def clear_updates():
-    url = f"https://api.telegram.org/bot{TG_TOKEN}/getUpdates"
-    requests.get(url, params={"offset": -1}, timeout=10)
+
+def normalize_cmd(text: str) -> str:
+    t = (text or "").strip().lower()
+    if t.startswith("/"):
+        t = t[1:]
+    return t
+
 
 def main():
-    data = get_updates()
-    if not data.get("ok"):
+    offset = load_offset()
+    updates = get_updates(offset)
+
+    if not updates:
+        print("No new updates. offset=", offset)
         return
 
-    for item in data.get("result", []):
-        msg = item.get("message", {})
-        text = msg.get("text", "").lower().strip()
-        chat_id = str(msg.get("chat", {}).get("id", ""))
+    max_update_id = offset - 1
+    triggered = False
 
-        if chat_id == TG_CHAT and text == "weather":
-            print("Trigger detected.")
-            subprocess.run(["python", "app/main.py"])
-            clear_updates()
-            return
+    for u in updates:
+        uid = u.get("update_id")
+        if isinstance(uid, int):
+            max_update_id = max(max_update_id, uid)
+
+        msg = u.get("message", {}) or u.get("edited_message", {}) or {}
+        text = msg.get("text", "")
+        chat = msg.get("chat", {}) or {}
+        chat_id = str(chat.get("id", "")).strip()
+
+        cmd = normalize_cmd(text)
+        if chat_id == TG_CHAT and cmd in ("weather", "w"):
+            print("Trigger detected from chat:", chat_id, "cmd:", cmd)
+            triggered = True
+
+    # ✅ 无论触发与否，都先推进 offset，避免重复读取同一条消息
+    if max_update_id >= 0:
+        save_offset(max_update_id + 1)
+        print("Advance offset ->", max_update_id + 1)
+
+    if triggered:
+        # 运行你的主程序（会自动发语音到 Telegram）
+        r = subprocess.run(["python", "app/main.py"], check=False)
+        print("main.py exit code:", r.returncode)
+
 
 if __name__ == "__main__":
     main()
