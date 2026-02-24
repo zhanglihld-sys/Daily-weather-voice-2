@@ -3,8 +3,7 @@ name: weather voice PM
 on:
   workflow_dispatch:
   schedule:
-    # 4:00 PM New York = 21:00 UTC (冬令时)
-    - cron: "0 21 * * *"
+  - cron: "0 12 * * *"
 
 jobs:
   run:
