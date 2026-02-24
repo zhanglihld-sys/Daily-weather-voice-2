@@ -7,7 +7,7 @@ from gtts import gTTS
 
 # ===== ENV =====
 VISUAL_KEY = os.environ["VISUAL_CROSSING_API_KEY"].strip()
-LOCATION = os.environ["LOCATION"].strip()  # 推荐：40.8448,-73.8648
+LOCATION = os.environ["LOCATION"].strip()
 TG_TOKEN = os.environ["TG_BOT_TOKEN"].strip()
 TG_CHAT = os.environ["TG_CHAT_ID"].strip()
 
@@ -18,6 +18,7 @@ OUT_DIR = "out"
 
 
 def fmt_num(x, nd=0):
+    """用于 caption/日志显示（保留负号）"""
     if x is None:
         return "未知"
     try:
@@ -31,43 +32,38 @@ def fmt_num(x, nd=0):
         return str(x)
 
 
-def tg_send_text(text: str):
-    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    r = requests.post(url, data={"chat_id": TG_CHAT, "text": text}, timeout=30)
-    print("TG_MSG_STATUS:", r.status_code)
-    print("TG_MSG_HEAD:", r.text[:200].replace("\n", " "))
-    r.raise_for_status()
-
-
-def tg_send_audio(audio_path: str, caption: str):
-    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendAudio"
-    with open(audio_path, "rb") as f:
-        r = requests.post(
-            url,
-            data={"chat_id": TG_CHAT, "caption": caption},
-            files={"audio": f},
-            timeout=90,
-        )
-    print("TG_AUDIO_STATUS:", r.status_code)
-    print("TG_AUDIO_HEAD:", r.text[:200].replace("\n", " "))
-    r.raise_for_status()
+def speak_temp_c(x):
+    """
+    ✅ 关键：所有温度用于口播时，统一把负号改写成“零下N”
+    避免 TTS 吞掉 '-' 读错。
+    """
+    if x is None:
+        return "未知"
+    try:
+        v = float(x)
+        iv = int(round(v))
+        if iv < 0:
+            return f"零下{abs(iv)}"
+        return str(iv)
+    except:
+        s = str(x).strip()
+        if s.startswith("-"):
+            return "零下" + s[1:]
+        return s
 
 
 def fetch_weather() -> dict:
-    # ✅ metric = 摄氏度
     url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{LOCATION}"
     params = {
         "key": VISUAL_KEY,
         "contentType": "json",
-        "unitGroup": "metric",
+        "unitGroup": "metric",            # 摄氏度
         "include": "days,current,alerts",
         "lang": "zh",
     }
-    resp = requests.get(url, params=params, timeout=30)
-    print("VC_STATUS:", resp.status_code)
-    print("VC_TEXT_HEAD:", resp.text[:200].replace("\n", " "))
-    resp.raise_for_status()
-    return resp.json()
+    r = requests.get(url, params=params, timeout=30)
+    r.raise_for_status()
+    return r.json()
 
 
 def pick_today(vc: dict, tz_name: str) -> dict:
@@ -117,52 +113,34 @@ def umbrella_hint(precipprob) -> str:
 
 
 def build_script_am(resolved: str, current: dict, today: dict) -> str:
-    cond_now = current.get("conditions")
-    temp_now = current.get("temp")
-    feel_now = current.get("feelslike")
-    hum_now = current.get("humidity")
-    wind_now = current.get("windspeed")
-    gust_now = current.get("windgust")
-
-    cond_today = today.get("conditions")
-    tmax = today.get("tempmax")
-    tmin = today.get("tempmin")
-    precipprob = today.get("precipprob")
-    uv = today.get("uvindex")
-
-    comfort = comfort_label(temp_now, hum_now)
-    umbrella = umbrella_hint(precipprob)
+    comfort = comfort_label(current.get("temp"), current.get("humidity"))
+    umbrella = umbrella_hint(today.get("precipprob"))
 
     return (
         f"早上好，这里是{resolved}天气播报。"
-        f"当前天气{fmt_num(cond_now)}，气温{fmt_num(temp_now)}度，体感{fmt_num(feel_now)}度，湿度{fmt_num(hum_now)}%，{comfort}。"
-        f"风速{fmt_num(wind_now)}公里每小时，阵风{fmt_num(gust_now)}公里每小时。"
-        f"今天整体{fmt_num(cond_today)}，最高{fmt_num(tmax)}度，最低{fmt_num(tmin)}度，降水概率{fmt_num(precipprob)}%。"
-        f"紫外线指数{fmt_num(uv)}。"
+        f"当前天气{current.get('conditions')}，"
+        f"气温{speak_temp_c(current.get('temp'))}度，体感{speak_temp_c(current.get('feelslike'))}度，"
+        f"湿度{fmt_num(current.get('humidity'))}%，{comfort}。"
+        f"风速{fmt_num(current.get('windspeed'))}公里每小时，阵风{fmt_num(current.get('windgust'))}公里每小时。"
+        f"今天整体{today.get('conditions')}，"
+        f"最高{speak_temp_c(today.get('tempmax'))}度，最低{speak_temp_c(today.get('tempmin'))}度，"
+        f"降水概率{fmt_num(today.get('precipprob'))}%。"
         f"{umbrella}。祝你今天顺利。"
     )
 
 
 def build_script_pm(resolved: str, current: dict, today: dict) -> str:
-    # 4pm 版本：更贴近下班需求（不啰嗦）
-    cond_now = current.get("conditions")
-    temp_now = current.get("temp")
-    feel_now = current.get("feelslike")
-    hum_now = current.get("humidity")
-    wind_now = current.get("windspeed")
-
-    tmax = today.get("tempmax")
-    tmin = today.get("tempmin")
-    precipprob = today.get("precipprob")
-
-    comfort = comfort_label(temp_now, hum_now)
-    umbrella = umbrella_hint(precipprob)
+    comfort = comfort_label(current.get("temp"), current.get("humidity"))
+    umbrella = umbrella_hint(today.get("precipprob"))
 
     return (
         f"下午好，这里是{resolved}下班前天气提醒。"
-        f"现在{fmt_num(cond_now)}，气温{fmt_num(temp_now)}度，体感{fmt_num(feel_now)}度，湿度{fmt_num(hum_now)}%，{comfort}。"
-        f"当前风速{fmt_num(wind_now)}公里每小时。"
-        f"今天最高{fmt_num(tmax)}度，最低{fmt_num(tmin)}度，降水概率{fmt_num(precipprob)}%。"
+        f"现在{current.get('conditions')}，"
+        f"气温{speak_temp_c(current.get('temp'))}度，体感{speak_temp_c(current.get('feelslike'))}度，"
+        f"湿度{fmt_num(current.get('humidity'))}%，{comfort}。"
+        f"当前风速{fmt_num(current.get('windspeed'))}公里每小时。"
+        f"今天最高{speak_temp_c(today.get('tempmax'))}度，最低{speak_temp_c(today.get('tempmin'))}度，"
+        f"降水概率{fmt_num(today.get('precipprob'))}%。"
         f"{umbrella}。回家路上注意安全。"
     )
 
@@ -171,52 +149,53 @@ def tts_mp3(text: str, out_path: str):
     gTTS(text=text, lang="zh-cn").save(out_path)
 
 
+def tg_send_audio(audio_path: str, caption: str):
+    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendAudio"
+    with open(audio_path, "rb") as f:
+        r = requests.post(
+            url,
+            data={"chat_id": TG_CHAT, "caption": caption},
+            files={"audio": f},
+            timeout=90,
+        )
+    r.raise_for_status()
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     tz = ZoneInfo(TZ_NAME)
     stamp = datetime.now(tz).strftime("%Y%m%d_%H%M")
 
-    try:
-        vc = fetch_weather()
-        with open(os.path.join(OUT_DIR, f"weather_raw_{stamp}.json"), "w", encoding="utf-8") as f:
-            json.dump(vc, f, ensure_ascii=False, indent=2)
+    vc = fetch_weather()
+    with open(os.path.join(OUT_DIR, f"weather_raw_{stamp}.json"), "w", encoding="utf-8") as f:
+        json.dump(vc, f, ensure_ascii=False, indent=2)
 
-        today = pick_today(vc, TZ_NAME)
-        current = vc.get("currentConditions", {}) or {}
-        resolved = vc.get("resolvedAddress") or LOCATION
+    today = pick_today(vc, TZ_NAME)
+    current = vc.get("currentConditions", {}) or {}
+    resolved = vc.get("resolvedAddress") or LOCATION
 
-        # 生成脚本（AM/PM 两套）
-        if RUN_MODE == "PM":
-            script = build_script_pm(resolved, current, today)
-            tag = "PM"
-        else:
-            script = build_script_am(resolved, current, today)
-            tag = "AM"
+    if RUN_MODE == "PM":
+        script = build_script_pm(resolved, current, today)
+        tag = "PM"
+    else:
+        script = build_script_am(resolved, current, today)
+        tag = "AM"
 
-        with open(os.path.join(OUT_DIR, f"script_{tag}_{stamp}.txt"), "w", encoding="utf-8") as f:
-            f.write(script + "\n")
+    with open(os.path.join(OUT_DIR, f"script_{tag}_{stamp}.txt"), "w", encoding="utf-8") as f:
+        f.write(script + "\n")
 
-        mp3_path = os.path.join(OUT_DIR, f"weather_{tag}_{stamp}.mp3")
-        tts_mp3(script, mp3_path)
+    mp3_path = os.path.join(OUT_DIR, f"weather_{tag}_{stamp}.mp3")
+    tts_mp3(script, mp3_path)
 
-        # caption：你能一眼核对口径（最重要的几项）
-        cap = (
-            f"{tag} | {resolved} | now {fmt_num(current.get('temp'))}°C | "
-            f"hi/lo {fmt_num(today.get('tempmax'))}/{fmt_num(today.get('tempmin'))}°C | "
-            f"hum {fmt_num(current.get('humidity'))}% | rain {fmt_num(today.get('precipprob'))}%"
-        )
-        tg_send_audio(mp3_path, cap)
+    # caption 保留真实负号，供你核对数据源
+    cap = (
+        f"{tag} | {resolved} | now {fmt_num(current.get('temp'))}°C | "
+        f"hi/lo {fmt_num(today.get('tempmax'))}/{fmt_num(today.get('tempmin'))}°C | "
+        f"hum {fmt_num(current.get('humidity'))}% | rain {fmt_num(today.get('precipprob'))}%"
+    )
+    tg_send_audio(mp3_path, cap)
 
-        print("DONE:", mp3_path)
-
-    except Exception as e:
-        # 失败告警：让你第一时间知道
-        msg = f"❌ WeatherVoice {RUN_MODE} failed: {type(e).__name__}: {e}"
-        try:
-            tg_send_text(msg)
-        except Exception:
-            pass
-        raise
+    print("DONE:", mp3_path)
 
 
 if __name__ == "__main__":
