@@ -1,2 +1,2 @@
 requests==2.32.3
-gTTS==2.5.3
+azure-cognitiveservices-speech==1.37.0
