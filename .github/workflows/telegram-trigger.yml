@@ -3,7 +3,7 @@ name: Telegram Trigger
 on:
   workflow_dispatch:
   schedule:
-    - cron: "* * * * *"   # 每1分钟检查一次（GitHub 仍可能有轻微延迟）
+    - cron: "*/10 * * * *"   # ✅ 每10分钟检查一次（高频会被GitHub跳过/延迟）
 
 jobs:
   check:
@@ -27,7 +27,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .tg_offset.txt
-          key: tg-offset-v2
+          key: tg-offset-v3
 
       - name: Check Telegram and trigger weather
         env:
@@ -46,4 +46,4 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .tg_offset.txt
-          key: tg-offset-v2
+          key: tg-offset-v3
