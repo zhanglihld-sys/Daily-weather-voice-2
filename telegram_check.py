@@ -4,14 +4,13 @@ import subprocess
 
 TG_TOKEN = os.environ["TG_BOT_TOKEN"].strip()
 TG_CHAT = str(os.environ["TG_CHAT_ID"]).strip()
-
 OFFSET_FILE = ".tg_offset.txt"
 
 
 def load_offset() -> int:
     try:
         with open(OFFSET_FILE, "r", encoding="utf-8") as f:
-            return int(f.read().strip() or "0")
+            return int((f.read() or "").strip() or "0")
     except:
         return 0
 
@@ -19,6 +18,23 @@ def load_offset() -> int:
 def save_offset(offset: int):
     with open(OFFSET_FILE, "w", encoding="utf-8") as f:
         f.write(str(offset))
+
+
+def tg_api(method: str, params=None):
+    url = f"https://api.telegram.org/bot{TG_TOKEN}/{method}"
+    r = requests.post(url, data=(params or {}), timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def ensure_long_polling_mode():
+    # ✅ 关键：如果 bot 之前设置过 webhook，getUpdates 会拿不到消息
+    # 这里每次轮询都主动 deleteWebhook，确保走 getUpdates
+    tg_api("deleteWebhook", {"drop_pending_updates": "false"})
+
+
+def send_text(text: str):
+    tg_api("sendMessage", {"chat_id": TG_CHAT, "text": text})
 
 
 def get_updates(offset: int):
@@ -39,6 +55,8 @@ def normalize_cmd(text: str) -> str:
 
 
 def main():
+    ensure_long_polling_mode()
+
     offset = load_offset()
     updates = get_updates(offset)
 
@@ -56,21 +74,21 @@ def main():
 
         msg = u.get("message", {}) or u.get("edited_message", {}) or {}
         text = msg.get("text", "")
-        chat = msg.get("chat", {}) or {}
-        chat_id = str(chat.get("id", "")).strip()
+        chat_id = str((msg.get("chat", {}) or {}).get("id", "")).strip()
 
         cmd = normalize_cmd(text)
         if chat_id == TG_CHAT and cmd in ("weather", "w"):
-            print("Trigger detected from chat:", chat_id, "cmd:", cmd)
             triggered = True
 
-    # ✅ 无论触发与否，都先推进 offset，避免重复读取同一条消息
+    # ✅ 先推进 offset，防止重复触发
     if max_update_id >= 0:
         save_offset(max_update_id + 1)
         print("Advance offset ->", max_update_id + 1)
 
     if triggered:
-        # 运行你的主程序（会自动发语音到 Telegram）
+        # 先给手机一个“立刻可见”的反馈
+        send_text("收到，正在生成语音天气（约30秒）…")
+
         r = subprocess.run(["python", "app/main.py"], check=False)
         print("main.py exit code:", r.returncode)
 
