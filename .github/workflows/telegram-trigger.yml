@@ -1,0 +1,33 @@
+name: Telegram Trigger
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/2 * * * *"   # 每2分钟检查一次
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check Telegram
+        env:
+          VISUAL_CROSSING_API_KEY: ${{ secrets.VISUAL_CROSSING_API_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          LOCATION: ${{ secrets.LOCATION }}
+          TZ_NAME: "America/New_York"
+        run: |
+          python telegram_check.py
