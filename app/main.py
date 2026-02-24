@@ -18,7 +18,7 @@ OUT_DIR = "out"
 
 
 def fmt_num(x, nd=0):
-    """用于 caption/日志显示（保留负号）"""
+    """用于 caption（保留负号）"""
     if x is None:
         return "未知"
     try:
@@ -33,10 +33,7 @@ def fmt_num(x, nd=0):
 
 
 def speak_temp_c(x):
-    """
-    ✅ 关键：所有温度用于口播时，统一把负号改写成“零下N”
-    避免 TTS 吞掉 '-' 读错。
-    """
+    """口播温度：负号改写成‘零下N’，避免 TTS 吞 '-'"""
     if x is None:
         return "未知"
     try:
@@ -81,7 +78,6 @@ def comfort_label(temp_c, humidity_pct) -> str:
         return "整体体感一般"
     t = float(temp_c)
     h = float(humidity_pct)
-
     if t >= 30 and h >= 65:
         return "偏闷热"
     if t >= 28 and h >= 70:
@@ -112,41 +108,66 @@ def umbrella_hint(precipprob) -> str:
     return "下雨概率较低，一般不需要带伞"
 
 
+def broadcast_pause(s: str) -> str:
+    """
+    广播感来自“停顿”：
+    - 用中文标点 + 省略号 + 换行制造自然停顿
+    gTTS 对这些停顿很敏感。
+    """
+    return (
+        s.replace("，", "，")
+         .replace("。", "。 ")
+         .replace("；", "； ")
+    )
+
+
 def build_script_am(resolved: str, current: dict, today: dict) -> str:
     comfort = comfort_label(current.get("temp"), current.get("humidity"))
     umbrella = umbrella_hint(today.get("precipprob"))
 
-    return (
-        f"早上好，这里是{resolved}天气播报。"
-        f"当前天气{current.get('conditions')}，"
-        f"气温{speak_temp_c(current.get('temp'))}度，体感{speak_temp_c(current.get('feelslike'))}度，"
-        f"湿度{fmt_num(current.get('humidity'))}%，{comfort}。"
-        f"风速{fmt_num(current.get('windspeed'))}公里每小时，阵风{fmt_num(current.get('windgust'))}公里每小时。"
-        f"今天整体{today.get('conditions')}，"
-        f"最高{speak_temp_c(today.get('tempmax'))}度，最低{speak_temp_c(today.get('tempmin'))}度，"
-        f"降水概率{fmt_num(today.get('precipprob'))}%。"
-        f"{umbrella}。祝你今天顺利。"
-    )
+    # 用换行分段：TTS 通常会更自然
+    text = f"""
+早上好……这里是 {resolved} 天气播报。
+
+当前天气：{current.get('conditions')}。
+气温 {speak_temp_c(current.get('temp'))} 度，体感 {speak_temp_c(current.get('feelslike'))} 度……
+湿度 {fmt_num(current.get('humidity'))}% ，{comfort}。
+风速 {fmt_num(current.get('windspeed'))} 公里每小时，阵风 {fmt_num(current.get('windgust'))} 公里每小时。
+
+今天整体：{today.get('conditions')}。
+最高 {speak_temp_c(today.get('tempmax'))} 度……最低 {speak_temp_c(today.get('tempmin'))} 度。
+降水概率 {fmt_num(today.get('precipprob'))}%。
+紫外线指数 {fmt_num(today.get('uvindex'))}。
+
+{umbrella}……
+祝你今天顺利。
+""".strip()
+    return broadcast_pause(text)
 
 
 def build_script_pm(resolved: str, current: dict, today: dict) -> str:
     comfort = comfort_label(current.get("temp"), current.get("humidity"))
     umbrella = umbrella_hint(today.get("precipprob"))
 
-    return (
-        f"下午好，这里是{resolved}下班前天气提醒。"
-        f"现在{current.get('conditions')}，"
-        f"气温{speak_temp_c(current.get('temp'))}度，体感{speak_temp_c(current.get('feelslike'))}度，"
-        f"湿度{fmt_num(current.get('humidity'))}%，{comfort}。"
-        f"当前风速{fmt_num(current.get('windspeed'))}公里每小时。"
-        f"今天最高{speak_temp_c(today.get('tempmax'))}度，最低{speak_temp_c(today.get('tempmin'))}度，"
-        f"降水概率{fmt_num(today.get('precipprob'))}%。"
-        f"{umbrella}。回家路上注意安全。"
-    )
+    text = f"""
+下午好……这里是 {resolved} 下班前天气提醒。
+
+现在：{current.get('conditions')}。
+气温 {speak_temp_c(current.get('temp'))} 度，体感 {speak_temp_c(current.get('feelslike'))} 度……
+湿度 {fmt_num(current.get('humidity'))}% ，{comfort}。
+风速 {fmt_num(current.get('windspeed'))} 公里每小时。
+
+今天最高 {speak_temp_c(today.get('tempmax'))} 度……最低 {speak_temp_c(today.get('tempmin'))} 度。
+降水概率 {fmt_num(today.get('precipprob'))}%。
+{umbrella}……
+回家路上注意安全。
+""".strip()
+    return broadcast_pause(text)
 
 
 def tts_mp3(text: str, out_path: str):
-    gTTS(text=text, lang="zh-cn").save(out_path)
+    # slow=True 会更像播音（你不喜欢慢可以改成 False）
+    gTTS(text=text, lang="zh-cn", slow=False).save(out_path)
 
 
 def tg_send_audio(audio_path: str, caption: str):
@@ -187,7 +208,6 @@ def main():
     mp3_path = os.path.join(OUT_DIR, f"weather_{tag}_{stamp}.mp3")
     tts_mp3(script, mp3_path)
 
-    # caption 保留真实负号，供你核对数据源
     cap = (
         f"{tag} | {resolved} | now {fmt_num(current.get('temp'))}°C | "
         f"hi/lo {fmt_num(today.get('tempmax'))}/{fmt_num(today.get('tempmin'))}°C | "
