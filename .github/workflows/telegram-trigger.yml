@@ -3,7 +3,7 @@ name: Telegram Trigger
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/2 * * * *"   # 每2分钟检查一次（GitHub schedule 可能会有延迟）
+    - cron: "* * * * *"   # 每1分钟检查一次（GitHub 仍可能有轻微延迟）
 
 jobs:
   check:
@@ -23,12 +23,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -v
 
-      # ✅ 用 cache 保存 offset（不需要写回仓库）
       - name: Restore Telegram offset cache
         uses: actions/cache@v4
         with:
           path: .tg_offset.txt
-          key: tg-offset-v1
+          key: tg-offset-v2
 
       - name: Check Telegram and trigger weather
         env:
@@ -37,7 +36,6 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           LOCATION: ${{ secrets.LOCATION }}
           TZ_NAME: "America/New_York"
-          # 让主程序知道这是即时触发（可选）
           RUN_MODE: "AM"
         run: |
           set -euxo pipefail
@@ -48,4 +46,4 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .tg_offset.txt
-          key: tg-offset-v1
+          key: tg-offset-v2
